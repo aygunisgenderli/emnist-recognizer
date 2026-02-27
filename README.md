@@ -42,7 +42,6 @@ Open `frontend/index.html` in browser
 - **Architecture**: CNN with BatchNormalization + Dropout
 - **Test Accuracy**: 89.56%
 
-https://drive.google.com/file/d/19RoVlQnwu8NQw4Qbsx6hH7gqXFyiobxi/view?usp=sharing
 
 ## Features
 - Interactive drawing canvas
@@ -50,3 +49,5 @@ https://drive.google.com/file/d/19RoVlQnwu8NQw4Qbsx6hH7gqXFyiobxi/view?usp=shari
 - Top 3 predictions with confidence bar chart
 
 - Support for digits (0-9) and letters (A-Z, a-z)
+
+https://drive.google.com/file/d/19RoVlQnwu8NQw4Qbsx6hH7gqXFyiobxi/view?usp=sharing
