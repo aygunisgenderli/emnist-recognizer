@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMNIST Əl Yazısı Tanıyıcı</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: #1e293b;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 90%;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #94a3b8;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .main-area {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .canvas-section { flex: 1; min-width: 280px; }
+        .result-section { flex: 1; min-width: 280px; }
+
+        .canvas-label {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        #drawCanvas {
+            display: block;
+            margin: 0 auto;
+            background: #000;
+            border: 3px solid #6366f1;
+            border-radius: 12px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #predictBtn {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            flex: 1;
+        }
+
+        #predictBtn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99,102,241,0.4); }
+        #predictBtn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        #clearBtn {
+            background: #334155;
+            color: #94a3b8;
+            flex: 1;
+        }
+
+        #clearBtn:hover { background: #475569; color: white; }
+
+        .result-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .prediction-card {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: center;
+            border: 2px solid #334155;
+        }
+
+        .best-char {
+            font-size: 72px;
+            font-weight: 700;
+            color: #6366f1;
+            line-height: 1;
+        }
+
+        .best-conf {
+            font-size: 18px;
+            color: #94a3b8;
+            margin-top: 8px;
+        }
+
+        .chart-container {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .placeholder {
+            text-align: center;
+            color: #475569;
+            padding: 60px 20px;
+            font-size: 14px;
+        }
+
+        .placeholder span { font-size: 48px; display: block; margin-bottom: 12px; }
+
+        .loading {
+            text-align: center;
+            color: #6366f1;
+            padding: 40px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>✍️ EMNIST Tanıyıcı</h1>
+    <p class="subtitle">Kətana hərf və ya rəqəm çək, model tanısın</p>
+
+    <div class="main-area">
+        <div class="canvas-section">
+            <p class="canvas-label">Aşağıya çək 👇</p>
+            <canvas id="drawCanvas" width="280" height="280"></canvas>
+            <div class="buttons">
+                <button id="predictBtn">🔍 Tanı</button>
+                <button id="clearBtn">🗑️ Sil</button>
+            </div>
+        </div>
+
+        <div class="result-section">
+            <p class="result-title">Nəticə</p>
+            <div id="results">
+                <div class="placeholder">
+                    <span>🤖</span>
+                    Kətana bir şey çək və<br>"Tanı" düyməsinə bas
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('drawCanvas');
+    const ctx = canvas.getContext('2d');
+    const predictBtn = document.getElementById('predictBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultsDiv = document.getElementById('results');
+
+    let isDrawing = false;
+    let lastX = 0, lastY = 0;
+    let chartInstance = null;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    canvas.addEventListener('mousedown', (e) => {
+        isDrawing = true;
+        [lastX, lastY] = getPos(e);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const [x, y] = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        [lastX, lastY] = [x, y];
+    });
+
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        isDrawing = true;
+        [lastX, lastY] = getPos(e.touches[0]);
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (!isDrawing) return;
+        const [x, y] = getPos(e.touches[0]);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        [lastX, lastY] = [x, y];
+    });
+
+    canvas.addEventListener('touchend', () => isDrawing = false);
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return [
+            (e.clientX - rect.left) * scaleX,
+            (e.clientY - rect.top) * scaleY
+        ];
+    }
+
+    clearBtn.addEventListener('click', () => {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        resultsDiv.innerHTML = `
+            <div class="placeholder">
+                <span>🤖</span>
+                Kətana bir şey çək və<br>"Tanı" düyməsinə bas
+            </div>`;
+        if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    });
+
+    predictBtn.addEventListener('click', async () => {
+        const imageData = canvas.toDataURL('image/png');
+        
+        predictBtn.disabled = true;
+        predictBtn.textContent = '⏳ Analiz edilir...';
+        resultsDiv.innerHTML = '<div class="loading">🔄 Model işləyir...</div>';
+
+        try {
+            const response = await fetch('http://localhost:5000/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showResults(data.predictions);
+            } else {
+                resultsDiv.innerHTML = `<div class="placeholder"><span>❌</span>Xəta: ${data.error}</div>`;
+            }
+        } catch (err) {
+            resultsDiv.innerHTML = `
+                <div class="placeholder">
+                    <span>🔌</span>
+                    Server bağlantısı yoxdur!<br>
+                    <small>backend/app.py işlədiyindən əmin ol</small>
+                </div>`;
+        } finally {
+            predictBtn.disabled = false;
+            predictBtn.textContent = '🔍 Tanı';
+        }
+    });
+
+    function showResults(predictions) {
+        const best = predictions[0];
+
+        if (chartInstance) chartInstance.destroy();
+
+        resultsDiv.innerHTML = `
+            <div class="prediction-card">
+                <div class="best-char">${best.character}</div>
+                <div class="best-conf">${best.confidence.toFixed(1)}% ehtimal</div>
+            </div>
+            <div class="chart-container">
+                <canvas id="barChart"></canvas>
+            </div>
+        `;
+
+        const chartCtx = document.getElementById('barChart').getContext('2d');
+        chartInstance = new Chart(chartCtx, {
+            type: 'bar',
+            data: {
+                labels: predictions.map(p => `"${p.character}"`),
+                datasets: [{
+                    label: 'Ehtimal (%)',
+                    data: predictions.map(p => p.confidence.toFixed(2)),
+                    backgroundColor: [
+                        'rgba(99,102,241,0.8)',
+                        'rgba(139,92,246,0.6)',
+                        'rgba(167,139,250,0.4)'
+                    ],
+                    borderColor: ['#6366f1','#8b5cf6','#a78bfa'],
+                    borderWidth: 2,
+                    borderRadius: 8,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { color: '#94a3b8', callback: v => v + '%' },
+                        grid: { color: '#1e293b' }
+                    },
+                    x: {
+                        ticks: { color: '#cbd5e1', font: { size: 18, weight: 'bold' } },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
